@@ -102,14 +102,14 @@
     }
 
     //The current game state.
-
+    bool playerisA = true;
     (int, int) currentPiece;
     List<(int, int)> validMoves;
 
     //Performs the select logic on a piece. Either the player has the piece or the player can move to the piece.
     void SelectPiece(int i, int j)
     {
-        var player = board.A;
+        var player = playerisA ? board.A : board.B;
         if (player.HasPawn(i, j))
         {
             currentPiece = (i, j);
@@ -123,8 +123,10 @@
             currentPiece = (-1, -1);
 
             //Runs the AI's move.
-            RunAI();
+            //RunAI();
 
+            //For 1 v 1
+            playerisA = !playerisA;
         }
 
         VictoryConditions();
@@ -149,22 +151,12 @@
         else if (board.A.CanMove() && !board.B.CanMove())
         {
             CurrentDirection = "Player " + board.B.Name + " cannot move. Please progress the game.";
+            playerisA = true;
         }
         else if (board.B.CanMove() && !board.A.CanMove())
         {
             CurrentDirection = "You can't move. Player " + board.B.Name + " will progress the game.";
-            while (!board.A.CanMove() && board.B.CanMove())
-            {
-                //RunAI();
-                if (!board.A.Pawns.Any())
-                {
-                    CurrentDirection = "Unfortunately, you have lost this round.";
-                    return;
-                }
-
-                CurrentDirection = "Neither player can complete the game.";
-                return;
-            }
+            playerisA = false;
         }
     }
 
