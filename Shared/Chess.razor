@@ -1,0 +1,215 @@
+﻿@using blazor_chess.Data;
+
+<div class="container-fluid">
+    <div class="form-group @Uncollapse">
+        <h4>Let's play a game of pawn chess!</h4>
+        <label for="username">Name</label>
+        <input type="text" class="form-control" id="username" @bind-value="@name" />
+        <button id="submitName" class="btn-primary my-2" @onclick="Submit">Submit!</button>
+    </div>
+
+    <main class="@Collapse">
+        <h5>@CurrentDirection</h5>
+        <div class="d-flex flex-row ">
+            <div class="card">
+                <h6 class="text-center card-header">@board.A.Name</h6>
+                @foreach (var pawn in board.A.Pawns)
+                {
+                    <div class="scoreboard">♟</div>
+                }
+            </div>
+            <table class="chessboard">
+                @for (int i = 0; i < board.Coordinates.Length; i++)
+                {
+                    bool white = startwhite;
+
+                    <tr>
+                        @for (int j = 0; j < board.Coordinates[0].Length; j++)
+                        {
+                            int a = i;
+                            int b = j;
+
+                            <td class="@CoordClass(white, (a,b))" @onclick="() => SelectPiece(a, b)">@GetPawn(board.Coordinates[i][j], board.A.HasPawn(i, j))</td>
+
+                            white = !white;
+                        }
+                    </tr>
+
+                    startwhite = !startwhite;
+                }
+            </table>
+            <div class="card">
+                <h6 class="text-center card-header">@board.B.Name</h6>
+                @foreach (var pawn in board.B.Pawns)
+                {
+                    <div class="scoreboard">♙</div>
+                }
+            </div>
+        </div>
+    </main>
+</div>
+
+@code {
+
+    string name;
+    PawnBoard board = new PawnBoard();
+    bool startwhite = true;
+
+    string Name { get; set; } = null;
+    string CurrentDirection { get; set; }
+    string Collapse { get { return !string.IsNullOrWhiteSpace(Name) ? null : "collapse collapsing"; } }
+    string Uncollapse { get { return string.IsNullOrWhiteSpace(Name) ? null : "collapse collapsing"; } }
+
+    public void Submit()
+    {
+        Name = name;
+        board = new PawnBoard(Name);
+
+        CurrentDirection = "Welcome " + Name + "! You will be playing as black. Please select a pawn below.";
+    }
+
+    //For decorating the board.
+
+    public string CoordClass(bool white, (int, int) val)
+    {
+        string cls = string.Empty;
+        if (validMoves != null && validMoves.Contains(val))
+        {
+            cls += "valid ";
+        }
+
+        cls += white ? "white" : "black";
+        return cls;
+    }
+
+    public string GetPawn(bool haspawn, bool black)
+    {
+        if (haspawn)
+        {
+            if (black)
+            {
+                return "♟";
+            }
+            else
+            {
+                return "♙";
+            }
+        }
+        else
+        {
+            return null;
+        }
+    }
+
+    //The current game state.
+
+    (int, int) currentPiece;
+    List<(int, int)> validMoves;
+
+    //Performs the select logic on a piece. Either the player has the piece or the player can move to the piece.
+    void SelectPiece(int i, int j)
+    {
+        var player = board.A;
+        if (player.HasPawn(i, j))
+        {
+            currentPiece = (i, j);
+            validMoves = player.ValidMoves(i, j);
+            StateHasChanged();
+        }
+        else if (validMoves != null && validMoves.Contains((i, j)))
+        {
+            CurrentDirection = board.Move(currentPiece, (i, j), player);
+            validMoves = null;
+            currentPiece = (-1, -1);
+
+            //Runs the AI's move.
+            RunAI();
+
+        }
+
+        VictoryConditions();
+    }
+
+    void VictoryConditions()
+    {
+        //Checks to see if the player has lost.
+        if (!board.A.Pawns.Any())
+        {
+            CurrentDirection = "Unfortunately, you have lost this round.";
+        }
+        else if (!board.B.Pawns.Any())
+        {
+            CurrentDirection = "Congratulations! You beat the computer!";
+        }
+        //Checks if either player can actually move.
+        else if (!board.A.CanMove() && !board.B.CanMove())
+        {
+            CurrentDirection = "Neither player can complete the game.";
+        }
+        else if (board.A.CanMove() && !board.B.CanMove())
+        {
+            CurrentDirection = "Player " + board.B.Name + " cannot move. Please progress the game.";
+        }
+        else if (board.B.CanMove() && !board.A.CanMove())
+        {
+            CurrentDirection = "You can't move. Player " + board.B.Name + " will progress the game.";
+            while (!board.A.CanMove() && board.B.CanMove())
+            {
+                //RunAI();
+                if (!board.A.Pawns.Any())
+                {
+                    CurrentDirection = "Unfortunately, you have lost this round.";
+                    return;
+                }
+
+                CurrentDirection = "Neither player can complete the game.";
+                return;
+            }
+        }
+    }
+
+    void RunAI()
+    {
+        //Player B will select every move possible, and will prefer the first valid move that let's them attack the player.
+        var moves = board.B.Pawns.ToDictionary(X => X, X => board.B.ValidMoves(X.Item1, X.Item2));
+        var aggressivemoves = new List<(int, int)>();
+
+        foreach (var movelist in moves)
+        {
+            if (movelist.Value.Count > 1)
+            {
+                aggressivemoves.AddRange(movelist.Value.Skip(1));
+            }
+        }
+
+        //Takes a random aggressive move, or a random normal move.
+        (int, int) move = (-1, -1);
+
+        var random = new Random();
+        if (aggressivemoves.Count > 1)
+        {
+            move = aggressivemoves[random.Next(aggressivemoves.Count)];
+        }
+        else
+        {
+            var allmoves = moves.Values.SelectMany(X => X).ToArray();
+            move = allmoves[random.Next(allmoves.Length)];
+        }
+
+        //Gets the piece with that move. Kinda performance heavy.
+        (int, int) selpiece = (-1, -1);
+        foreach (var piece in moves)
+        {
+            if (piece.Value.Contains(move))
+            {
+                selpiece = piece.Key;
+                break;
+            }
+        }
+
+        //Moves that move.
+        CurrentDirection = board.Move(selpiece, move, board.B);
+    }
+}
+
+
